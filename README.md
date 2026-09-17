@@ -31,6 +31,15 @@ next to the agent doing the work, not a replacement for it.
   leaves the developer's machine (parallel effort, tracked separately — not blocking
   this extension's own progress)
 
+## Installation
+
+Not yet on the VS Code Marketplace — install from a [GitHub Release](https://github.com/janostisza89-byte/vscode-sybil/releases) `.vsix` in the meantime:
+
+1. Download the latest `vscode-sybil-*.vsix` from [Releases](https://github.com/janostisza89-byte/vscode-sybil/releases).
+2. In VS Code: Extensions panel → `...` menu (top right) → **Install from VSIX...** → select the downloaded file.
+   Or from a terminal: `code --install-extension vscode-sybil-<version>.vsix`
+3. Click the Sybil icon in the Activity Bar, open **Setup**, and follow the flow below.
+
 ## Setup
 
 Every user needs a Portal login (2FA-protected) regardless of how they'll actually
