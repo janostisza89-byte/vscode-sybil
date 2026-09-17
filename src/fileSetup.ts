@@ -2,21 +2,58 @@ import * as vscode from "vscode";
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { McpJsonResponse } from "./portalClient";
+
+const execFileAsync = promisify(execFile);
+
+function looksLikeEnvPlaceholder(value: unknown): boolean {
+  return typeof value === "string" && /\$\{[A-Z_][A-Z0-9_]*\}/.test(value);
+}
+
+async function isGitTracked(filePath: string, cwd: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["ls-files", "--error-unmatch", filePath], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isInsideGitRepo(cwd: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], { cwd });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Write/merge .mcp.json into the current workspace root. Merges rather than
  * overwrites — a real dev environment likely has other MCP servers already
- * configured, and this must not clobber them. Embeds the real token
- * directly (the extension already holds it; no ${SYBILKB_TOKEN} env-var
- * indirection needed the way a manually-downloaded file needs).
+ * configured, and this must not clobber them.
+ *
+ * Never silently embeds a raw token into a git-tracked .mcp.json. Confirmed
+ * live (2026-09-17): a Foundry_v2 test run overwrote that repo's own
+ * committed .mcp.json — which deliberately uses ${SYBILKB_TOKEN}/
+ * ${SYBILKB_MCP_URL} placeholders so it's safe to commit — with a real
+ * bearer token, one `git add`/`commit` away from leaking it into history.
+ * Two guards now: (1) if the existing sybil-kb entry already uses
+ * ${...}-style placeholders, leave it untouched entirely — that pattern is
+ * a deliberate signal the project wants env-var indirection, not a raw
+ * secret; (2) otherwise, if the file is git-tracked (or would be newly
+ * created inside a git repo), warn before writing a raw token, same
+ * modal-confirm pattern as the CLAUDE.md write below.
  */
 export async function writeMcpJson(mcpJson: McpJsonResponse, token: string): Promise<string> {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
     throw new Error("No workspace folder open — open a folder before running auto-configure.");
   }
-  const filePath = path.join(folder.uri.fsPath, ".mcp.json");
+  const cwd = folder.uri.fsPath;
+  const filePath = path.join(cwd, ".mcp.json");
 
   let existing: Record<string, unknown> = {};
   try {
@@ -28,6 +65,27 @@ export async function writeMcpJson(mcpJson: McpJsonResponse, token: string): Pro
   }
 
   const mcpServers = (existing.mcpServers as Record<string, unknown>) ?? {};
+  const existingEntry = mcpServers["sybil-kb"] as { url?: unknown; headers?: { Authorization?: unknown } } | undefined;
+
+  if (looksLikeEnvPlaceholder(existingEntry?.url) || looksLikeEnvPlaceholder(existingEntry?.headers?.Authorization)) {
+    throw new Error(
+      `${filePath} already has a sybil-kb entry using \${...} env-var placeholders — left untouched, since that's a deliberate signal this project wants env-var indirection, not an embedded secret. Set SYBILKB_TOKEN/SYBILKB_MCP_URL in your shell environment instead.`
+    );
+  }
+
+  const tracked = (await isInsideGitRepo(cwd)) && (await isGitTracked(".mcp.json", cwd));
+  if (tracked) {
+    const choice = await vscode.window.showWarningMessage(
+      `${filePath} is tracked by git. Writing your real token into it risks committing a live credential into history.`,
+      { modal: true },
+      "Write anyway",
+      "Cancel"
+    );
+    if (choice !== "Write anyway") {
+      throw new Error("Cancelled — .mcp.json is git-tracked, left untouched.");
+    }
+  }
+
   mcpServers["sybil-kb"] = {
     type: mcpJson.mcpServers["sybil-kb"].type,
     url: mcpJson.mcpServers["sybil-kb"].url,
