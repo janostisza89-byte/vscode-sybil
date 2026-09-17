@@ -4,6 +4,7 @@ const SECRET_TOKEN_KEY = "sybil.token";
 const STATE_ENDPOINT_KEY = "sybil.endpoint";
 const STATE_OWNER_ID_KEY = "sybil.ownerId";
 const STATE_PROJECT_ID_KEY = "sybil.projectId";
+const STATE_PORTAL_URL_KEY = "sybil.portalUrl";
 
 /**
  * All SybilKB connection state for the current workspace.
@@ -31,6 +32,15 @@ export class SybilConfig {
 
   async setEndpoint(endpoint: string): Promise<void> {
     await this.context.workspaceState.update(STATE_ENDPOINT_KEY, endpoint);
+  }
+
+  /** Portal base URL (e.g. http://your-portal-host:8000) — used only for auto-configure, not per-call. */
+  getPortalUrl(): string | undefined {
+    return this.context.workspaceState.get<string>(STATE_PORTAL_URL_KEY);
+  }
+
+  async setPortalUrl(url: string): Promise<void> {
+    await this.context.workspaceState.update(STATE_PORTAL_URL_KEY, url);
   }
 
   getOwnerId(): string | undefined {

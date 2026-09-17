@@ -2,7 +2,7 @@
   "name": "vscode-sybil",
   "displayName": "Sybil",
   "description": "Companion extension for SybilKB — task board, module browser, DCP recall, and quality-gate views for any SybilKB-backed project. Does not edit code; pairs with Claude Code (or any MCP-capable coding agent) for that.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "sybil-project",
   "license": "MIT",
   "repository": {
