@@ -1,0 +1,8 @@
+.vscode/**
+.git/**
+src/**
+tsconfig.json
+.gitignore
+**/*.map
+node_modules/**
+!node_modules/@modelcontextprotocol/**

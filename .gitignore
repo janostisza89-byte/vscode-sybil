@@ -1,0 +1,22 @@
+# Build output
+dist/
+out/
+*.vsix
+
+# Dependencies
+node_modules/
+
+# Never commit any endpoint/token/credential test files, however named
+.env
+.env.*
+*.secret
+*.token
+sybil-dev-config.json
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
