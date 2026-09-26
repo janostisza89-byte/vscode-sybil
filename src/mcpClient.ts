@@ -59,4 +59,17 @@ export class SybilMcpClient {
     });
     return result;
   }
+
+  /**
+   * Fire-and-forget: ensure this user has their own SonarQube identity
+   * (sybil_sonarqube_ensure_identity — auto-provisions on first call, no-ops
+   * after). Called right after project selection, invisibly — nothing
+   * currently depends on it existing yet (Quality Gate view is still a
+   * stub), so a failure here is logged, never surfaced to the user.
+   */
+  ensureSonarqubeIdentity(): void {
+    void this.callTool("sybil_sonarqube_ensure_identity").catch((err) => {
+      console.error("Sybil: sybil_sonarqube_ensure_identity failed (non-fatal):", err);
+    });
+  }
 }

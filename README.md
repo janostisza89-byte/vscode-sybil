@@ -22,6 +22,12 @@ next to the agent doing the work, not a replacement for it.
   against ZeigarnikClerk, added to SybilKB's own tool surface 2026-09-26. Search box filters
   the currently loaded list client-side — there's no server-side task search tool yet, so it
   only covers what's already fetched under the current status filter, not the whole board.
+- **Automatic SonarQube identity** — the moment a project is selected (auto-configure or
+  the manual Set Project ID button), SybilKB silently ensures this user has their own
+  SonarQube account/token (auto-provisioned on first use, never a manual step, never
+  surfaced in this UI — the credential lives server-side in Portal, this extension never
+  sees it). Failures are logged, not shown, since nothing currently depends on it (Quality
+  Gate view is still a stub).
 - **Project setup: Add Playwright MCP** — one click merges a working `playwright` entry
   (headless chromium via `@playwright/mcp`) into the workspace's `.mcp.json`, no manual
   editing. First of a growing set of one-time, template-driven per-project setup steps

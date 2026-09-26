@@ -89,6 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
         await config.setProjectId(projectId);
         setupView.refresh();
         taskBoardView.refresh();
+        mcp.ensureSonarqubeIdentity();
         vscode.window.showInformationMessage(`Sybil: now working on project "${projectId}".`);
       }
     }),

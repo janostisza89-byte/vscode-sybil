@@ -102,6 +102,7 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
       await this.config.setOwnerId(info.user_id);
       await this.config.setProjectId(picked);
       this.mcp.disconnect();
+      this.mcp.ensureSonarqubeIdentity();
 
       const mcpJsonResult = await writeMcpJson(mcpJson, token);
       const claudeMdResult = await writeGlobalClaudeMd(claudeMd);
