@@ -3,6 +3,7 @@ import { SybilConfig } from "./config";
 import { SybilMcpClient } from "./mcpClient";
 import { SetupViewProvider } from "./views/setupView";
 import { TaskBoardViewProvider } from "./views/taskBoardView";
+import { QualityGateViewProvider } from "./views/qualityGateView";
 import { StubViewProvider } from "./views/stubView";
 import { addPlaywrightMcp, onboardSonarQubeProject } from "./fileSetup";
 
@@ -11,11 +12,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const mcp = new SybilMcpClient(config);
 
   const taskBoardView = new TaskBoardViewProvider(context, mcp);
-  const setupView = new SetupViewProvider(context, config, mcp, () => taskBoardView.refresh());
+  const qualityGateView = new QualityGateViewProvider(context, mcp);
+  const setupView = new SetupViewProvider(context, config, mcp, () => {
+    taskBoardView.refresh();
+    qualityGateView.refresh();
+  });
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("sybil.setup", setupView),
     vscode.window.registerWebviewViewProvider("sybil.taskBoard", taskBoardView),
+    vscode.window.registerWebviewViewProvider("sybil.qualityGate", qualityGateView),
     // Not built yet — placeholders so the sidebar isn't broken while these
     // land incrementally (see vscode-sybil README, "Roadmap").
     vscode.window.registerWebviewViewProvider(
@@ -25,10 +31,6 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider(
       "sybil.dcpRecall",
       new StubViewProvider("DCP Recall — coming next. Will wrap sybil_recall.")
-    ),
-    vscode.window.registerWebviewViewProvider(
-      "sybil.qualityGate",
-      new StubViewProvider("Quality Gate — coming next. Will wrap sybil_get_quality_report, hidden for projects with no gate configured.")
     ),
 
     vscode.commands.registerCommand("sybil.setToken", async () => {
@@ -42,6 +44,7 @@ export function activate(context: vscode.ExtensionContext): void {
         mcp.disconnect();
         setupView.refresh();
         taskBoardView.refresh();
+        qualityGateView.refresh();
         vscode.window.showInformationMessage("Sybil: token saved.");
       }
     }),
@@ -57,6 +60,7 @@ export function activate(context: vscode.ExtensionContext): void {
         mcp.disconnect();
         setupView.refresh();
         taskBoardView.refresh();
+        qualityGateView.refresh();
         vscode.window.showInformationMessage("Sybil: endpoint saved.");
       }
     }),
@@ -75,6 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
         await config.setOwnerId(ownerId);
         setupView.refresh();
         taskBoardView.refresh();
+        qualityGateView.refresh();
         vscode.window.showInformationMessage("Sybil: user ID saved.");
       }
     }),
@@ -89,6 +94,7 @@ export function activate(context: vscode.ExtensionContext): void {
         await config.setProjectId(projectId);
         setupView.refresh();
         taskBoardView.refresh();
+        qualityGateView.refresh();
         mcp.ensureSonarqubeIdentity();
         onboardSonarQubeProject(mcp);
         vscode.window.showInformationMessage(`Sybil: now working on project "${projectId}".`);

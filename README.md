@@ -31,8 +31,12 @@ next to the agent doing the work, not a replacement for it.
   this machine its own fresh scan token if it does. Locally writes
   `sonar-project.properties` + `.githooks/post-commit` (only if neither already exists,
   never clobbers hand-customized scanner config) and a gitignored `.sonar-token`, then
-  points git at the hooks directory. Failures are logged, not shown, since nothing
-  currently depends on it yet (Quality Gate view is still a stub).
+  points git at the hooks directory.
+- **Quality Gate** — gate status (OK/ERROR badge), each failing/passing condition
+  (`sybil_get_quality_report`), and open issues by severity. A project with no SonarQube
+  counterpart yet shows a plain "not configured" message inline rather than an error or
+  a hidden view — that's the expected state for most projects until onboarding + a real
+  scan has happened.
 - **Project setup: Add Playwright MCP** — one click merges a working `playwright` entry
   (headless chromium via `@playwright/mcp`) into the workspace's `.mcp.json`, no manual
   editing. First of a growing set of one-time, template-driven per-project setup steps
@@ -43,12 +47,10 @@ next to the agent doing the work, not a replacement for it.
 
 - Module Browser (`sybil_search` / `sybil_get_module`)
 - DCP Recall (`sybil_recall`)
-- Quality Gate (`sybil_get_quality_report`) — only shown for projects with one configured
 - Richer webview UI (current views are plain HTML/JS; a proper bundled UI layer is a
   later pass once the shell itself is proven out)
-- More project-setup steps alongside Playwright MCP: SonarQube onboarding (scanner
-  template + git hook + quality-gate API calls) and a customer-docs site scaffold —
-  same "one-time, template-driven, local repo change" shape, next in line
+- A customer-docs site scaffold (Starlight) — same "one-time, template-driven, local
+  repo change" shape as the SonarQube/Playwright project-setup steps, next in line
 - A local component for AST/code-relation extraction on projects whose source never
   leaves the developer's machine (parallel effort, tracked separately, heavier lift than
   the project-setup steps above — an always-running local process, not a one-time copy)
