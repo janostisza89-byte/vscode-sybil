@@ -53,6 +53,12 @@ next to the agent doing the work, not a replacement for it.
   leaves the developer's machine (parallel effort, tracked separately, heavier lift than
   the project-setup steps above — an always-running local process, not a one-time copy)
 
+## Setting up a new project
+
+**→ See [NEW_PROJECT_SETUP.md](NEW_PROJECT_SETUP.md) for the full, copy-pasteable checklist**
+(install → auto-configure → git init → sonar-scanner CLI → first commit). This section and
+the ones below are reference material for how the extension works, not a step-by-step guide.
+
 ## Installation
 
 Not yet on the VS Code Marketplace — install from a [GitHub Release](https://github.com/janostisza89-byte/vscode-sybil/releases) `.vsix` in the meantime:
