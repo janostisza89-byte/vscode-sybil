@@ -5,6 +5,7 @@ import * as os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { McpJsonResponse } from "./portalClient";
+import { SybilMcpClient } from "./mcpClient";
 
 const execFileAsync = promisify(execFile);
 
@@ -170,6 +171,174 @@ export async function addPlaywrightMcp(): Promise<"added" | "already_present"> {
 
   await fs.writeFile(filePath, JSON.stringify(existing, null, 2) + "\n", "utf-8");
   return "added";
+}
+
+const SONARQUBE_POST_COMMIT_HOOK = `#!/usr/bin/env bash
+# Fires a background sonar-scanner run after every commit, reporting to the
+# centrally-hosted SonarQube CE server. Never blocks the commit, never runs
+# inside a Claude Code / Sybil session -- this is a plain git hook, same
+# mechanism as any linter pre-commit hook.
+#
+# Versioned under .githooks/ (not .git/hooks/) so it ships with the repo on
+# any future checkout -- see \`git config core.hooksPath .githooks\`.
+#
+# Token resolution: env var SONAR_TOKEN, else a gitignored .sonar-token file
+# at repo root. Neither is ever committed.
+
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+SONAR_HOST_URL="\${SONAR_HOST_URL:-__SONAR_HOST_URL__}"
+
+if [ -z "\${SONAR_TOKEN:-}" ] && [ -f "$REPO_ROOT/.sonar-token" ]; then
+    SONAR_TOKEN="$(cat "$REPO_ROOT/.sonar-token")"
+fi
+
+if [ -z "\${SONAR_TOKEN:-}" ]; then
+    echo "[post-commit] SONAR_TOKEN not set (env or .sonar-token) -- skipping scan." >&2
+    exit 0
+fi
+
+if ! command -v sonar-scanner >/dev/null 2>&1; then
+    echo "[post-commit] sonar-scanner not installed -- skipping scan." >&2
+    exit 0
+fi
+
+(
+    cd "$REPO_ROOT" && \\
+    sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN" \\
+        >> "$REPO_ROOT/.sonar-scan.log" 2>&1
+) &
+
+disown
+exit 0
+`;
+
+function sonarProjectProperties(projectKey: string): string {
+  return `# SonarQube scanner config for ${projectKey}. Analysis is triggered by
+# .githooks/post-commit, not by a live Sybil session.
+sonar.projectKey=${projectKey}
+sonar.projectName=${projectKey}
+sonar.sources=.
+sonar.exclusions=**/__pycache__/**,**/.venv/**,**/venv/**,**/node_modules/**,**/dist/**,**/build/**,**/*.db,**/*.sqlite3
+sonar.sourceEncoding=UTF-8
+`;
+}
+
+export interface SonarQubeSetupResult {
+  status: "written" | "skipped_exists" | "no_workspace";
+  files?: string[];
+}
+
+/**
+ * Writes the local half of SonarQube onboarding, once SybilKB's
+ * sybil_sonarqube_onboard_project tool has already created/confirmed the
+ * project and returned a fresh analysis token: sonar-project.properties +
+ * .githooks/post-commit (only if neither already exists, to never clobber
+ * hand-customized scanner config), always refreshes .sonar-token (that
+ * file's whole purpose is holding the CURRENT token), gitignores both the
+ * token and the scan log, and points git at the hooks directory.
+ */
+export async function setupSonarQubeFiles(
+  projectKey: string,
+  sonarqubeUrl: string,
+  analysisToken: string
+): Promise<SonarQubeSetupResult> {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    return { status: "no_workspace" };
+  }
+  const cwd = folder.uri.fsPath;
+  const written: string[] = [];
+
+  const propertiesPath = path.join(cwd, "sonar-project.properties");
+  const hooksDir = path.join(cwd, ".githooks");
+  const hookPath = path.join(hooksDir, "post-commit");
+
+  const propertiesExists = await fs
+    .access(propertiesPath)
+    .then(() => true)
+    .catch(() => false);
+  if (!propertiesExists) {
+    await fs.writeFile(propertiesPath, sonarProjectProperties(projectKey), "utf-8");
+    written.push(propertiesPath);
+  }
+
+  const hookExists = await fs
+    .access(hookPath)
+    .then(() => true)
+    .catch(() => false);
+  if (!hookExists) {
+    await fs.mkdir(hooksDir, { recursive: true });
+    const hookContent = SONARQUBE_POST_COMMIT_HOOK.replace("__SONAR_HOST_URL__", sonarqubeUrl);
+    await fs.writeFile(hookPath, hookContent, "utf-8");
+    await fs.chmod(hookPath, 0o755);
+    written.push(hookPath);
+  }
+
+  // .sonar-token and gitignoring happen BEFORE the git config call below --
+  // confirmed live (2026-09-26): a workspace that isn't a git repo yet made
+  // that call throw, silently aborting everything after it (the token file
+  // and gitignoring never ran, only properties+hook did, since they're
+  // written earlier). Nothing past this point should be able to take those
+  // two down with it.
+  const tokenPath = path.join(cwd, ".sonar-token");
+  await fs.writeFile(tokenPath, analysisToken, "utf-8");
+  written.push(tokenPath);
+
+  await ensureGitignored(cwd, ".sonar-token");
+  await ensureGitignored(cwd, ".sonar-scan.log");
+
+  if (!hookExists) {
+    try {
+      await execFileAsync("git", ["config", "core.hooksPath", ".githooks"], { cwd });
+    } catch (err) {
+      console.error("Sybil: git config core.hooksPath failed (non-fatal — not a git repo yet, or git not on PATH):", err);
+    }
+  }
+
+  return { status: written.length > 0 ? "written" : "skipped_exists", files: written };
+}
+
+/**
+ * Fire-and-forget: call sybil_sonarqube_onboard_project, then write the
+ * local half if it succeeds. Invisible by design (2026-09-26, Janos: "this
+ * could be totally invisible for the user") -- called right after project
+ * selection, same as ensureSonarqubeIdentity. Failures are logged, never
+ * surfaced, since nothing in this UI currently depends on it existing yet.
+ */
+export function onboardSonarQubeProject(mcp: SybilMcpClient): void {
+  void (async () => {
+    try {
+      const result = (await mcp.callTool("sybil_sonarqube_onboard_project")) as {
+        content?: Array<{ type: string; text?: string }>;
+      };
+      const textBlock = result.content?.find((c) => c.type === "text")?.text;
+      if (!textBlock) {
+        console.error("Sybil: sybil_sonarqube_onboard_project returned no content");
+        return;
+      }
+      const parsed = JSON.parse(textBlock) as {
+        status?: string;
+        project_key?: string;
+        analysis_token?: string;
+        sonarqube_url?: string;
+        reason?: string;
+      };
+      if (parsed.status === "failed") {
+        console.error("Sybil: sybil_sonarqube_onboard_project failed (non-fatal):", parsed.reason);
+        return;
+      }
+      if (!parsed.project_key || !parsed.analysis_token || !parsed.sonarqube_url) {
+        console.error("Sybil: sybil_sonarqube_onboard_project returned an incomplete result:", parsed);
+        return;
+      }
+      const fileResult = await setupSonarQubeFiles(parsed.project_key, parsed.sonarqube_url, parsed.analysis_token);
+      console.log(`Sybil: SonarQube local setup ${fileResult.status}`, fileResult.files);
+    } catch (err) {
+      console.error("Sybil: onboardSonarQubeProject failed (non-fatal):", err);
+    }
+  })();
 }
 
 /**

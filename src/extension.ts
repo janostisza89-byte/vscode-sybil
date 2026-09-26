@@ -4,7 +4,7 @@ import { SybilMcpClient } from "./mcpClient";
 import { SetupViewProvider } from "./views/setupView";
 import { TaskBoardViewProvider } from "./views/taskBoardView";
 import { StubViewProvider } from "./views/stubView";
-import { addPlaywrightMcp } from "./fileSetup";
+import { addPlaywrightMcp, onboardSonarQubeProject } from "./fileSetup";
 
 export function activate(context: vscode.ExtensionContext): void {
   const config = new SybilConfig(context);
@@ -90,6 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
         setupView.refresh();
         taskBoardView.refresh();
         mcp.ensureSonarqubeIdentity();
+        onboardSonarQubeProject(mcp);
         vscode.window.showInformationMessage(`Sybil: now working on project "${projectId}".`);
       }
     }),

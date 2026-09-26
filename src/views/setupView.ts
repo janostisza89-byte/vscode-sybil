@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { SybilConfig } from "../config";
 import { SybilMcpClient } from "../mcpClient";
 import { fetchSybilInfo, fetchMcpJson, fetchClaudeMd } from "../portalClient";
-import { writeMcpJson, writeGlobalClaudeMd } from "../fileSetup";
+import { writeMcpJson, writeGlobalClaudeMd, onboardSonarQubeProject } from "../fileSetup";
 
 /**
  * Setup wizard. Primary path: Portal URL + token -> auto-configure (fetches
@@ -103,6 +103,7 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
       await this.config.setProjectId(picked);
       this.mcp.disconnect();
       this.mcp.ensureSonarqubeIdentity();
+      onboardSonarQubeProject(this.mcp);
 
       const mcpJsonResult = await writeMcpJson(mcpJson, token);
       const claudeMdResult = await writeGlobalClaudeMd(claudeMd);
