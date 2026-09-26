@@ -2,7 +2,7 @@
   "name": "vscode-sybil",
   "displayName": "Sybil",
   "description": "Companion extension for SybilKB — task board, module browser, DCP recall, and quality-gate views for any SybilKB-backed project. Does not edit code; pairs with Claude Code (or any MCP-capable coding agent) for that.",
-  "version": "0.0.4",
+  "version": "0.0.8",
   "publisher": "sybil-project",
   "license": "MIT",
   "repository": {
@@ -37,22 +37,26 @@
         {
           "id": "sybil.taskBoard",
           "name": "Task Board",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "collapsed"
         },
         {
           "id": "sybil.moduleBrowser",
           "name": "Module Browser",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "collapsed"
         },
         {
           "id": "sybil.dcpRecall",
           "name": "DCP Recall",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "collapsed"
         },
         {
           "id": "sybil.qualityGate",
           "name": "Quality Gate",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -66,8 +70,16 @@
         "title": "Sybil: Set SybilKB Endpoint URL"
       },
       {
-        "command": "sybil.selectProject",
-        "title": "Sybil: Select Project"
+        "command": "sybil.setOwnerId",
+        "title": "Sybil: Set User ID"
+      },
+      {
+        "command": "sybil.setProjectId",
+        "title": "Sybil: Set Project ID"
+      },
+      {
+        "command": "sybil.addPlaywrightMcp",
+        "title": "Sybil: Add Playwright MCP (browser automation)"
       }
     ]
   },

@@ -17,7 +17,8 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly config: SybilConfig,
-    private readonly mcp: SybilMcpClient
+    private readonly mcp: SybilMcpClient,
+    private readonly onConfigChanged: () => void
   ) {}
 
   refresh(): void {
@@ -39,17 +40,28 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
         case "setEndpoint":
           await vscode.commands.executeCommand("sybil.setEndpoint");
           this.refresh();
+          this.onConfigChanged();
           break;
         case "setToken":
           await vscode.commands.executeCommand("sybil.setToken");
           this.refresh();
+          this.onConfigChanged();
           break;
-        case "selectProject":
-          await vscode.commands.executeCommand("sybil.selectProject");
+        case "setOwnerId":
+          await vscode.commands.executeCommand("sybil.setOwnerId");
           this.refresh();
+          this.onConfigChanged();
+          break;
+        case "setProjectId":
+          await vscode.commands.executeCommand("sybil.setProjectId");
+          this.refresh();
+          this.onConfigChanged();
           break;
         case "testConnection":
           await this.testConnection(webviewView.webview);
+          break;
+        case "addPlaywrightMcp":
+          await vscode.commands.executeCommand("sybil.addPlaywrightMcp");
           break;
       }
     });
@@ -91,15 +103,23 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
       await this.config.setProjectId(picked);
       this.mcp.disconnect();
 
-      const mcpJsonPath = await writeMcpJson(mcpJson, token);
+      const mcpJsonResult = await writeMcpJson(mcpJson, token);
       const claudeMdResult = await writeGlobalClaudeMd(claudeMd);
+
+      const gitignoreNote =
+        mcpJsonResult.gitignore === "added"
+          ? " Added .mcp.json to .gitignore (repo detected) — your token won't be committed."
+          : mcpJsonResult.gitignore === "already_present"
+          ? " .gitignore already covers .mcp.json."
+          : ""; // skipped_no_git — no repo here yet, nothing to protect
 
       webview.postMessage({
         command: "autoConfigureResult",
         ok: true,
-        message: `Done. Wrote ${mcpJsonPath}. CLAUDE.md: ${claudeMdResult}. Project: ${picked}.`,
+        message: `Done. Wrote ${mcpJsonResult.path}.${gitignoreNote} CLAUDE.md: ${claudeMdResult}. Project: ${picked}.`,
       });
       this.render(webview);
+      this.onConfigChanged();
     } catch (err) {
       webview.postMessage({
         command: "autoConfigureResult",
@@ -167,11 +187,15 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
           ${row("Project", projectId)}
           <button id="btnTest">Test Connection</button>
 
+          <p style="margin-top:16px;"><strong>Project setup</strong></p>
+          <button id="btnPlaywright">Add Playwright MCP (browser automation)</button>
+
           <details>
             <summary>Manual / advanced setup</summary>
             <button class="secondary" id="btnEndpoint">Set Endpoint URL</button>
             <button class="secondary" id="btnToken">Set Access Token</button>
-            <button class="secondary" id="btnProject">Select Project</button>
+            <button class="secondary" id="btnOwnerId">Set User ID</button>
+            <button class="secondary" id="btnProject">Set Project ID</button>
           </details>
 
           <script>
@@ -185,8 +209,10 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
             };
             document.getElementById('btnEndpoint').onclick = () => vscode.postMessage({ command: 'setEndpoint' });
             document.getElementById('btnToken').onclick = () => vscode.postMessage({ command: 'setToken' });
-            document.getElementById('btnProject').onclick = () => vscode.postMessage({ command: 'selectProject' });
+            document.getElementById('btnOwnerId').onclick = () => vscode.postMessage({ command: 'setOwnerId' });
+            document.getElementById('btnProject').onclick = () => vscode.postMessage({ command: 'setProjectId' });
             document.getElementById('btnTest').onclick = () => vscode.postMessage({ command: 'testConnection' });
+            document.getElementById('btnPlaywright').onclick = () => vscode.postMessage({ command: 'addPlaywrightMcp' });
             window.addEventListener('message', (event) => {
               const msg = event.data;
               if (msg.command === 'autoConfigureProgress') {

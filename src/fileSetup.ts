@@ -31,6 +31,34 @@ async function isInsideGitRepo(cwd: string): Promise<boolean> {
 }
 
 /**
+ * Ensure .gitignore (creating it if absent) covers the given entry, inside a
+ * git repo only — nothing to protect from committing if there's no repo yet.
+ * Best-effort: called right after writeMcpJson embeds a raw token, so a fresh
+ * project never depends on Janos remembering to gitignore .mcp.json himself
+ * (2026-09-26 correction — the previous behavior only warned when the file
+ * was ALREADY tracked, which does nothing for a brand-new file about to be
+ * committed for the first time).
+ */
+async function ensureGitignored(cwd: string, entry: string): Promise<"added" | "already_present" | "skipped_no_git"> {
+  if (!(await isInsideGitRepo(cwd))) {
+    return "skipped_no_git";
+  }
+  const gitignorePath = path.join(cwd, ".gitignore");
+  let content = "";
+  try {
+    content = await fs.readFile(gitignorePath, "utf-8");
+  } catch {
+    // No .gitignore yet — appendFile below creates it.
+  }
+  if (content.split(/\r?\n/).some((l) => l.trim() === entry)) {
+    return "already_present";
+  }
+  const needsLeadingNewline = content.length > 0 && !content.endsWith("\n");
+  await fs.appendFile(gitignorePath, `${needsLeadingNewline ? "\n" : ""}${entry}\n`, "utf-8");
+  return "added";
+}
+
+/**
  * Write/merge .mcp.json into the current workspace root. Merges rather than
  * overwrites — a real dev environment likely has other MCP servers already
  * configured, and this must not clobber them.
@@ -47,7 +75,12 @@ async function isInsideGitRepo(cwd: string): Promise<boolean> {
  * created inside a git repo), warn before writing a raw token, same
  * modal-confirm pattern as the CLAUDE.md write below.
  */
-export async function writeMcpJson(mcpJson: McpJsonResponse, token: string): Promise<string> {
+export interface WriteMcpJsonResult {
+  path: string;
+  gitignore: "added" | "already_present" | "skipped_no_git";
+}
+
+export async function writeMcpJson(mcpJson: McpJsonResponse, token: string): Promise<WriteMcpJsonResult> {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
     throw new Error("No workspace folder open — open a folder before running auto-configure.");
@@ -94,7 +127,49 @@ export async function writeMcpJson(mcpJson: McpJsonResponse, token: string): Pro
   existing.mcpServers = mcpServers;
 
   await fs.writeFile(filePath, JSON.stringify(existing, null, 2) + "\n", "utf-8");
-  return filePath;
+  const gitignore = await ensureGitignored(cwd, ".mcp.json");
+  return { path: filePath, gitignore };
+}
+
+/**
+ * Merge a recommended Playwright MCP entry into .mcp.json — the standard
+ * config Janos hand-installed for Foundry-v4 (2026-09), confirmed working:
+ * @playwright/mcp via npx, headless chromium. Unlike writeMcpJson's sybil-kb
+ * entry, this carries no secret/token, so none of that function's git-tracked
+ * placeholder/warning logic applies — safe to merge in unconditionally.
+ * No-ops if a "playwright" entry already exists, successful or not: this is
+ * an additive recommendation, never a silent overwrite of whatever the repo
+ * already has configured for that key.
+ */
+export async function addPlaywrightMcp(): Promise<"added" | "already_present"> {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    throw new Error("No workspace folder open — open a folder before running this.");
+  }
+  const cwd = folder.uri.fsPath;
+  const filePath = path.join(cwd, ".mcp.json");
+
+  let existing: Record<string, unknown> = {};
+  try {
+    const raw = await fs.readFile(filePath, "utf-8");
+    existing = JSON.parse(raw);
+  } catch {
+    // No existing file, or invalid JSON — start fresh either way.
+  }
+
+  const mcpServers = (existing.mcpServers as Record<string, unknown>) ?? {};
+  if (mcpServers["playwright"]) {
+    return "already_present";
+  }
+
+  mcpServers["playwright"] = {
+    command: "npx",
+    args: ["-y", "@playwright/mcp@latest", "--headless", "--browser", "chromium"],
+  };
+  existing.mcpServers = mcpServers;
+
+  await fs.writeFile(filePath, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+  return "added";
 }
 
 /**

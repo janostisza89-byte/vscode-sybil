@@ -4,13 +4,14 @@ import { SybilMcpClient } from "./mcpClient";
 import { SetupViewProvider } from "./views/setupView";
 import { TaskBoardViewProvider } from "./views/taskBoardView";
 import { StubViewProvider } from "./views/stubView";
+import { addPlaywrightMcp } from "./fileSetup";
 
 export function activate(context: vscode.ExtensionContext): void {
   const config = new SybilConfig(context);
   const mcp = new SybilMcpClient(config);
 
-  const setupView = new SetupViewProvider(context, config, mcp);
   const taskBoardView = new TaskBoardViewProvider(context, mcp);
+  const setupView = new SetupViewProvider(context, config, mcp, () => taskBoardView.refresh());
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("sybil.setup", setupView),
@@ -40,6 +41,7 @@ export function activate(context: vscode.ExtensionContext): void {
         await config.setToken(token);
         mcp.disconnect();
         setupView.refresh();
+        taskBoardView.refresh();
         vscode.window.showInformationMessage("Sybil: token saved.");
       }
     }),
@@ -54,21 +56,30 @@ export function activate(context: vscode.ExtensionContext): void {
         await config.setEndpoint(endpoint);
         mcp.disconnect();
         setupView.refresh();
+        taskBoardView.refresh();
         vscode.window.showInformationMessage("Sybil: endpoint saved.");
       }
     }),
 
-    vscode.commands.registerCommand("sybil.selectProject", async () => {
+    // Split from a single "Select Project" command (2026-09-26 correction —
+    // that command's FIRST prompt actually asked for owner_id, not a
+    // project, which misled anyone reading the button label). Now one
+    // button per field, matching setEndpoint/setToken above.
+    vscode.commands.registerCommand("sybil.setOwnerId", async () => {
       const ownerId = await vscode.window.showInputBox({
         prompt: "Your Portal user_id (owner_id) — shown alongside your token in Portal",
         value: config.getOwnerId() ?? "",
         ignoreFocusOut: true,
       });
-      if (!ownerId) {
-        return;
+      if (ownerId) {
+        await config.setOwnerId(ownerId);
+        setupView.refresh();
+        taskBoardView.refresh();
+        vscode.window.showInformationMessage("Sybil: user ID saved.");
       }
-      await config.setOwnerId(ownerId);
+    }),
 
+    vscode.commands.registerCommand("sybil.setProjectId", async () => {
       const projectId = await vscode.window.showInputBox({
         prompt: "Project key (from Portal's Projects list, case-sensitive)",
         value: config.getProjectId() ?? "",
@@ -77,7 +88,21 @@ export function activate(context: vscode.ExtensionContext): void {
       if (projectId) {
         await config.setProjectId(projectId);
         setupView.refresh();
+        taskBoardView.refresh();
         vscode.window.showInformationMessage(`Sybil: now working on project "${projectId}".`);
+      }
+    }),
+
+    vscode.commands.registerCommand("sybil.addPlaywrightMcp", async () => {
+      try {
+        const result = await addPlaywrightMcp();
+        vscode.window.showInformationMessage(
+          result === "added"
+            ? "Sybil: added Playwright MCP to .mcp.json (headless chromium)."
+            : "Sybil: .mcp.json already has a \"playwright\" entry — left untouched."
+        );
+      } catch (err) {
+        vscode.window.showErrorMessage(err instanceof Error ? err.message : "Unknown error adding Playwright MCP.");
       }
     })
   );

@@ -9,27 +9,38 @@ actual coding work stays with your MCP-capable coding agent (e.g. Claude Code) t
 the same SybilKB instance over the same protocol. Think of this as the dashboard sitting
 next to the agent doing the work, not a replacement for it.
 
-## What it does today (v0.0.2)
+## What it does today (v0.0.5)
 
 - **Setup** — one-step auto-configure from a Portal URL + token (see below), or manual
   per-field entry for a Portal-less SybilKB deployment
-- **Task Board** — view open tasks (`sybil_task_list`), open new ones (`sybil_task_open`)
+- **Task Board** — view tasks (`sybil_task_list`, filterable by status), open new ones with a
+  priority (`sybil_task_open`), click into one for full detail (`sybil_task_get`). From there:
+  edit description/priority (`sybil_task_update`), a quick priority-only change, mark it
+  Complete (`sybil_task_close`) or Obsolete (`sybil_task_obsolete`, distinct from Complete —
+  "doesn't need doing" vs "got done"), or Reactivate a closed one back to Open
+  (`sybil_task_reactivate`) — parity with what Portal's Control Room UI already does directly
+  against ZeigarnikClerk, added to SybilKB's own tool surface 2026-09-26. Search box filters
+  the currently loaded list client-side — there's no server-side task search tool yet, so it
+  only covers what's already fetched under the current status filter, not the whole board.
+- **Project setup: Add Playwright MCP** — one click merges a working `playwright` entry
+  (headless chromium via `@playwright/mcp`) into the workspace's `.mcp.json`, no manual
+  editing. First of a growing set of one-time, template-driven per-project setup steps
+  (see Roadmap) — carries no secret, so it's always safe to merge, unlike the `sybil-kb`
+  entry's token-leak guarding.
 
 ## Roadmap (built incrementally, not all at once)
 
 - Module Browser (`sybil_search` / `sybil_get_module`)
 - DCP Recall (`sybil_recall`)
 - Quality Gate (`sybil_get_quality_report`) — only shown for projects with one configured
-- Task closing as a real form (currently list/create only — closing needs
-  `resolution_summary` / `files_changed` / `validation_result`, deferred to keep this
-  first cut honest about scope)
 - Richer webview UI (current views are plain HTML/JS; a proper bundled UI layer is a
   later pass once the shell itself is proven out)
-- Optional third-party MCP server recommendations (e.g. Playwright MCP) — one-time
-  prompt, no coupling to this extension's own internals
+- More project-setup steps alongside Playwright MCP: SonarQube onboarding (scanner
+  template + git hook + quality-gate API calls) and a customer-docs site scaffold —
+  same "one-time, template-driven, local repo change" shape, next in line
 - A local component for AST/code-relation extraction on projects whose source never
-  leaves the developer's machine (parallel effort, tracked separately — not blocking
-  this extension's own progress)
+  leaves the developer's machine (parallel effort, tracked separately, heavier lift than
+  the project-setup steps above — an always-running local process, not a one-time copy)
 
 ## Installation
 
