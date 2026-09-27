@@ -62,9 +62,17 @@ interface LanguageSpec {
   selfTypes: ReadonlySet<string>;
   importFamily: "python" | "es";
   fileExtensions: readonly string[];
+  /** Jest/Mocha/Vitest's test(name, fn)/it(name, fn)/etc. — a real, well-defined
+   * call-signature convention, not a guess (same class of thing as recognizing
+   * an HTTP route decorator). Empty for Python: pytest test functions are
+   * already ordinary named `def test_foo():` declarations, already captured. */
+  testWrapperNames: ReadonlySet<string>;
+  describeNames: ReadonlySet<string>;
 }
 
 const ES_FILE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"] as const;
+const ES_TEST_WRAPPER_NAMES = new Set(["describe", "test", "it", "beforeEach", "afterEach", "beforeAll", "afterAll"]);
+const ES_DESCRIBE_NAMES = new Set(["describe"]);
 
 const LANGUAGE_SPECS: Record<string, LanguageSpec> = {
   python: {
@@ -78,6 +86,8 @@ const LANGUAGE_SPECS: Record<string, LanguageSpec> = {
     selfTypes: new Set(["identifier"]), // matched by text === "self", see isSelfObject
     importFamily: "python",
     fileExtensions: [".py"],
+    testWrapperNames: new Set(),
+    describeNames: new Set(),
   },
   javascript: {
     wasmFile: "tree-sitter-javascript.wasm",
@@ -90,6 +100,8 @@ const LANGUAGE_SPECS: Record<string, LanguageSpec> = {
     selfTypes: new Set(["this"]),
     importFamily: "es",
     fileExtensions: ES_FILE_EXTENSIONS,
+    testWrapperNames: ES_TEST_WRAPPER_NAMES,
+    describeNames: ES_DESCRIBE_NAMES,
   },
   typescript: {
     wasmFile: "tree-sitter-typescript.wasm",
@@ -102,6 +114,8 @@ const LANGUAGE_SPECS: Record<string, LanguageSpec> = {
     selfTypes: new Set(["this"]),
     importFamily: "es",
     fileExtensions: ES_FILE_EXTENSIONS,
+    testWrapperNames: ES_TEST_WRAPPER_NAMES,
+    describeNames: ES_DESCRIBE_NAMES,
   },
   tsx: {
     wasmFile: "tree-sitter-tsx.wasm",
@@ -114,6 +128,8 @@ const LANGUAGE_SPECS: Record<string, LanguageSpec> = {
     selfTypes: new Set(["this"]),
     importFamily: "es",
     fileExtensions: ES_FILE_EXTENSIONS,
+    testWrapperNames: ES_TEST_WRAPPER_NAMES,
+    describeNames: ES_DESCRIBE_NAMES,
   },
 };
 
@@ -421,6 +437,44 @@ export async function extractFile(filePath: string, source: string, repoRoot?: s
           walk(child, scopeStack, qualifiedName);
         }
         return;
+      }
+    }
+
+    // Jest/Mocha/Vitest: test(name, fn)/it(name, fn)/describe(name, fn)/etc.
+    // Deliberately NOT gated on `currentFn` — these calls are almost always
+    // at module top level, which is exactly why calls inside them were
+    // invisible before this (confirmed live, Cats project, 2026-09-27:
+    // every call in catFacts.test.ts/about.test.js was inside a bare
+    // top-level test(...) with no enclosing named function). `describe`
+    // nests like a class (a real grouping construct); test/it/before*/
+    // after* are leaf scopes, same shape as a function/method.
+    if (spec.callTypes.has(node.type) && spec.testWrapperNames.size > 0) {
+      const wrapperFnNode = node.childForFieldName("function");
+      if (wrapperFnNode?.type === "identifier" && spec.testWrapperNames.has(wrapperFnNode.text)) {
+        const argsNode = node.childForFieldName("arguments");
+        const args = argsNode?.namedChildren ?? [];
+        const lastArg = args[args.length - 1];
+        const isCallback = lastArg && (lastArg.type === "arrow_function" || lastArg.type === "function_expression");
+        const nameArg = args.find((a) => a.type === "string");
+        if (isCallback && nameArg) {
+          const rawName = nameArg.text.slice(1, -1); // strip quotes
+          const qualifiedName = qualify(scopeStack, rawName);
+          const isDescribe = spec.describeNames.has(wrapperFnNode.text);
+          nodes.push({
+            kind: isDescribe ? "class" : scopeStack.length ? "method" : "function",
+            name: rawName,
+            qualified_name: qualifiedName,
+            language: spec.languageTag,
+            line_start: lineOf(node),
+            line_end: lineOf(node, true),
+          });
+          walk(lastArg, isDescribe ? [...scopeStack, rawName] : scopeStack, isDescribe ? currentFn : qualifiedName);
+          return;
+        }
+        // No string-literal name found (e.g. test.each(...)(fn), or a
+        // templated/computed name) -- fall through to ordinary handling
+        // below rather than guess one; the callback's calls stay
+        // attributed to whatever scope already applies (usually none).
       }
     }
 

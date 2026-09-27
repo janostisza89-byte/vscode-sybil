@@ -64,12 +64,16 @@ next to the agent doing the work, not a replacement for it.
   - Extracts function/class declarations, same-file bare-name calls, `self.foo()`/
     `this.foo()` calls (resolved against the enclosing class's own methods), calls to a
     name imported via a *relative* import (ES `import` or CommonJS destructured
-    `require()`) that resolves to a real file on disk, and a file-level `imports` graph
-    (one node per file, real edges from real import statements). Deliberately doesn't
-    guess: an arbitrary `obj.method()` (no type inference), a bare/absolute import
-    (could be an installed package), an inherited method from a superclass in another
-    file, or a call inside a bare `test()`/`it()` callback (no enclosing named scope)
-    are all silently skipped rather than resolved wrong.
+    `require()`) that resolves to a real file on disk, a file-level `imports` graph
+    (one node per file, real edges from real import statements), and Jest/Mocha/Vitest's
+    `test(name, fn)`/`it(name, fn)`/`describe(name, fn)` convention (`describe` nests
+    like a class, the rest are leaf scopes named after their string description —
+    without this, virtually every JS/TS test file's own call graph was invisible, since
+    almost every call in one sits directly inside a bare top-level callback). Deliberately
+    doesn't guess: an arbitrary `obj.method()` (no type inference), a bare/absolute
+    import (could be an installed package), an inherited method from a superclass in
+    another file, or a templated/computed test name (`test.each(...)`) are all silently
+    skipped rather than resolved wrong.
   - A one-time full-repo scan runs as part of onboarding, so a project's existing
     history isn't left uncaptured — only files touched by a commit made *after*
     onboarding would otherwise ever get pushed.
@@ -97,10 +101,9 @@ next to the agent doing the work, not a replacement for it.
 - A customer-docs site scaffold (Starlight) — same "one-time, template-driven, local
   repo change" shape as the SonarQube/Playwright project-setup steps, next in line
 - Cartographer Redesign, remaining stages: Stage 3 (CI ingestion path for main — needs
-  a real GitHub Actions secret, a deliberate hold rather than scripting it blind), calls
-  from top-level test-framework callbacks (a real design ambiguity, not yet resolved),
-  and module-level derivation for the visualizer's module layer (file/detailed layers
-  both work from branch data now, module doesn't yet)
+  a real GitHub Actions secret, a deliberate hold rather than scripting it blind) and
+  module-level derivation for the visualizer's module layer (file/detailed layers both
+  work from branch data now, module doesn't yet)
 
 ## Setting up a new project
 
