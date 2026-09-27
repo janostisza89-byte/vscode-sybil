@@ -62,6 +62,35 @@ async function ensureGitignored(cwd: string, entry: string): Promise<"added" | "
 }
 
 /**
+ * Ensure .gitattributes (creating it if absent) covers the given line —
+ * same idempotent create-or-append shape as ensureGitignored. Added after a
+ * real onboarding session (Cats, 2026-09-27) hit CRLF/LF warnings on every
+ * commit, and flagged the sharper real risk: a hook file checked out with
+ * CRLF line endings (Windows default without this) breaks its own
+ * `#!/usr/bin/env bash` shebang on a teammate's first Linux/macOS checkout.
+ * Called from both SonarQube's and Cartographer's setup — either one may
+ * run first, and the line only needs to exist once regardless of which.
+ */
+async function ensureGitattributesLine(cwd: string, line: string): Promise<"added" | "already_present" | "skipped_no_git"> {
+  if (!(await isInsideGitRepo(cwd))) {
+    return "skipped_no_git";
+  }
+  const gitattributesPath = path.join(cwd, ".gitattributes");
+  let content = "";
+  try {
+    content = await fs.readFile(gitattributesPath, "utf-8");
+  } catch {
+    // No .gitattributes yet — appendFile below creates it.
+  }
+  if (content.split(/\r?\n/).some((l) => l.trim() === line)) {
+    return "already_present";
+  }
+  const needsLeadingNewline = content.length > 0 && !content.endsWith("\n");
+  await fs.appendFile(gitattributesPath, `${needsLeadingNewline ? "\n" : ""}${line}\n`, "utf-8");
+  return "added";
+}
+
+/**
  * Write/merge .mcp.json into the current workspace root. Merges rather than
  * overwrites — a real dev environment likely has other MCP servers already
  * configured, and this must not clobber them.
@@ -185,6 +214,20 @@ export async function addPlaywrightMcp(): Promise<"added" | "already_present"> {
  * Token resolution: env var SONAR_TOKEN, else a gitignored .sonar-token file
  * at repo root. Neither is ever committed. Assumes $REPO_ROOT is already set
  * by the shared header ensureHookSection writes once per file.
+ *
+ * Three Windows/git-bash fixes folded in after a real onboarding session
+ * (Cats project, 2026-09-27) hit all three live:
+ * - `command -v sonar-scanner` never matches on git-bash (MSYS) when only
+ *   sonar-scanner.bat is on PATH — bash's `command -v` doesn't do Windows'
+ *   PATHEXT resolution the way cmd.exe does. Now probes .bat/.cmd too.
+ * - The scanner's default JRE auto-provisioning throws AccessDeniedException
+ *   on a fresh Windows extraction (AV/indexer lock) — harmless to always
+ *   skip since NEW_PROJECT_SETUP.md's own install instructions already use
+ *   the JRE-bundled CLI zip.
+ * - Repo inside a OneDrive/Dropbox/iCloud-synced folder: the sync client's
+ *   own lock collides with the scanner deleting/recreating its working
+ *   directory (.scannerwork/.sonartmp) — 100% reproducible, not flaky.
+ *   Redirected to a per-repo folder under %LOCALAPPDATA%, Windows-only.
  */
 const SONARQUBE_POST_COMMIT_SECTION = `SONAR_HOST_URL="\${SONAR_HOST_URL:-__SONAR_HOST_URL__}"
 
@@ -192,14 +235,32 @@ if [ -z "\${SONAR_TOKEN:-}" ] && [ -f "$REPO_ROOT/.sonar-token" ]; then
     SONAR_TOKEN="$(cat "$REPO_ROOT/.sonar-token")"
 fi
 
+SONAR_SCANNER_BIN=""
+for _candidate in sonar-scanner sonar-scanner.bat sonar-scanner.cmd; do
+    if command -v "$_candidate" >/dev/null 2>&1; then
+        SONAR_SCANNER_BIN="$_candidate"
+        break
+    fi
+done
+
+SONAR_EXTRA_OPTS="-Dsonar.scanner.skipJreProvisioning=true"
+case "$(uname -s 2>/dev/null || echo unknown)" in
+    MINGW*|MSYS*|CYGWIN*)
+        if [ -n "\${LOCALAPPDATA:-}" ]; then
+            _repo_hash="$(echo "$REPO_ROOT" | cksum | cut -d' ' -f1)"
+            SONAR_EXTRA_OPTS="$SONAR_EXTRA_OPTS -Dsonar.working.directory=$LOCALAPPDATA/sonar-scanner-work/$_repo_hash"
+        fi
+        ;;
+esac
+
 if [ -z "\${SONAR_TOKEN:-}" ]; then
     echo "[post-commit] SONAR_TOKEN not set (env or .sonar-token) -- skipping scan." >&2
-elif ! command -v sonar-scanner >/dev/null 2>&1; then
+elif [ -z "$SONAR_SCANNER_BIN" ]; then
     echo "[post-commit] sonar-scanner not installed -- skipping scan." >&2
 else
     (
         cd "$REPO_ROOT" && \\
-        sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN" \\
+        "$SONAR_SCANNER_BIN" -Dsonar.host.url="$SONAR_HOST_URL" -Dsonar.token="$SONAR_TOKEN" $SONAR_EXTRA_OPTS \\
             >> "$REPO_ROOT/.sonar-scan.log" 2>&1
     ) &
     disown
@@ -371,6 +432,7 @@ export async function setupSonarQubeFiles(
 
   await ensureGitignored(cwd, ".sonar-token");
   await ensureGitignored(cwd, ".sonar-scan.log");
+  await ensureGitattributesLine(cwd, ".githooks/* text eol=lf");
 
   // Idempotent and cheap either way, so always run it rather than gating on
   // whether the hook file was already there — a hook file created by some
@@ -491,6 +553,7 @@ export async function setupCartographerFiles(config: SybilConfig, context: vscod
   written.push(configPath);
   await ensureGitignored(cwd, ".sybil-cartographer.json");
   await ensureGitignored(cwd, ".cartographer-push.log");
+  await ensureGitattributesLine(cwd, ".githooks/* text eol=lf");
 
   const hookPath = path.join(cwd, ".githooks", "post-commit");
   const hookResult = await ensureHookSection(cwd, "cartographer", CARTOGRAPHER_POST_COMMIT_SECTION);
