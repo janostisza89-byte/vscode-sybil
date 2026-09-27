@@ -257,6 +257,38 @@ function extractPythonImports(root: Node, repoRoot: string, currentFileAbs: stri
 function extractEsImports(root: Node, repoRoot: string, currentFileAbs: string): Map<string, string> {
   const importMap = new Map<string, string>();
   function walk(node: Node) {
+    // CommonJS: const { pickFact, formatFact } = require('./catFacts') —
+    // structurally nothing like import_statement, so it needs its own
+    // detection. Only the destructured form is handled (each bound name
+    // becomes directly callable, matching how a bare import_specifier
+    // resolves); a namespace-style `const catFacts = require(...)` is left
+    // alone on purpose — catFacts.pickFact() is then an ordinary
+    // obj.method() call, the same "no type inference" case this extractor
+    // already declines to resolve for any object other than self/this.
+    if (node.type === "variable_declarator") {
+      const nameNode = node.childForFieldName("name");
+      const valueNode = node.childForFieldName("value");
+      if (nameNode?.type === "object_pattern" && valueNode?.type === "call_expression") {
+        const fnNode = valueNode.childForFieldName("function");
+        const argsNode = valueNode.childForFieldName("arguments");
+        const firstArg = argsNode?.namedChildren[0];
+        if (fnNode?.type === "identifier" && fnNode.text === "require" && firstArg?.type === "string") {
+          const specifier = firstArg.text.slice(1, -1);
+          const resolved = resolveEsRelativeImport(repoRoot, currentFileAbs, specifier);
+          if (resolved) {
+            for (const prop of nameNode.namedChildren) {
+              if (prop.type === "shorthand_property_identifier_pattern") {
+                importMap.set(prop.text, resolved);
+              }
+              // A renamed destructure ({ pickFact: renamed }) is a
+              // pair_pattern — deliberately not handled yet, same
+              // "common case first" cut as the rest of this extractor.
+            }
+          }
+        }
+      }
+    }
+
     if (node.type === "import_statement") {
       const sourceNode = node.childForFieldName("source");
       if (sourceNode) {
