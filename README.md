@@ -50,6 +50,16 @@ next to the agent doing the work, not a replacement for it.
   editing. First of a growing set of one-time, template-driven per-project setup steps
   (see Roadmap) — carries no secret, so it's always safe to merge, unlike the `sybil-kb`
   entry's token-leak guarding.
+- **Cartographer — Push Current File** (one-shot, Python only) — parses the active
+  editor's file locally with `web-tree-sitter` (functions/classes/same-file bare-name
+  calls only — no attribute or cross-file resolution yet) and pushes it via
+  `sybil_cartographer_ingest_delta` into Cartographer's isolated branch-scoped staging
+  tables, tagged with this workspace's persistent id + the current git branch/commit/
+  dirty-state. For projects whose source lives only on this machine — Cartographer's own
+  indexing (`sybil_task_open`/`sybil_task_close`) needs filesystem access it doesn't have
+  there. Deliberately inert on the read side: nothing queries these tables yet, so pushing
+  a delta today has no effect on anything else. First proof-of-path slice of a larger
+  Cartographer Redesign (see Roadmap) — no file watcher, one language, manual trigger only.
 
 ## Roadmap (built incrementally, not all at once)
 
@@ -57,9 +67,10 @@ next to the agent doing the work, not a replacement for it.
   later pass once the shell itself is proven out)
 - A customer-docs site scaffold (Starlight) — same "one-time, template-driven, local
   repo change" shape as the SonarQube/Playwright project-setup steps, next in line
-- A local component for AST/code-relation extraction on projects whose source never
-  leaves the developer's machine (parallel effort, tracked separately, heavier lift than
-  the project-setup steps above — an always-running local process, not a one-time copy)
+- Cartographer Redesign, remaining stages: a file watcher (today's push is a manual
+  one-shot command only), more languages (TS/TSX next), attribute/cross-file call
+  resolution, and Stage 2 — branch-aware retrieval, lifecycle/GC, main-overlay resolution
+  — actually reading the staging tables the current one-shot push writes into
 
 ## Setting up a new project
 

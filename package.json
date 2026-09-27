@@ -2,7 +2,7 @@
   "name": "vscode-sybil",
   "displayName": "Sybil",
   "description": "Companion extension for SybilKB — task board, module browser, DCP recall, and quality-gate views for any SybilKB-backed project. Does not edit code; pairs with Claude Code (or any MCP-capable coding agent) for that.",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "publisher": "sybil-project",
   "license": "MIT",
   "repository": {
@@ -80,6 +80,10 @@
       {
         "command": "sybil.addPlaywrightMcp",
         "title": "Sybil: Add Playwright MCP (browser automation)"
+      },
+      {
+        "command": "sybil.cartographerPushCurrentFile",
+        "title": "Sybil: Cartographer — Push Current File (one-shot, Python only)"
       }
     ]
   },
@@ -99,6 +103,8 @@
     "typescript": "^5.5.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.22.6"
   }
 }

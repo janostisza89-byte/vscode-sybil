@@ -7,6 +7,7 @@ import { QualityGateViewProvider } from "./views/qualityGateView";
 import { DocsSearchViewProvider } from "./views/docsSearchView";
 import { DcpRecallViewProvider } from "./views/dcpRecallView";
 import { addPlaywrightMcp, onboardSonarQubeProject } from "./fileSetup";
+import { extractAndPushCurrentFile } from "./cartographerPush";
 
 export function activate(context: vscode.ExtensionContext): void {
   const config = new SybilConfig(context);
@@ -117,6 +118,10 @@ export function activate(context: vscode.ExtensionContext): void {
       } catch (err) {
         vscode.window.showErrorMessage(err instanceof Error ? err.message : "Unknown error adding Playwright MCP.");
       }
+    }),
+
+    vscode.commands.registerCommand("sybil.cartographerPushCurrentFile", async () => {
+      await extractAndPushCurrentFile(context, mcp);
     })
   );
 }
