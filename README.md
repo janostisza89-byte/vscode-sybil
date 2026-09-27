@@ -62,17 +62,29 @@ next to the agent doing the work, not a replacement for it.
   consuming repo. There's also a manual **"Cartographer — Push Current File"** command
   for a one-off push without waiting for a commit.
   - Extracts function/class declarations, same-file bare-name calls, `self.foo()`/
-    `this.foo()` calls (resolved against the enclosing class's own methods), and calls
-    to a name imported via a *relative* import that resolves to a real file on disk.
-    Deliberately doesn't guess: an arbitrary `obj.method()` (no type inference), a
-    bare/absolute import (could be an installed package), or an inherited method from
-    a superclass in another file are all silently skipped rather than resolved wrong.
-  - `sybil_trace_relations`/Portal's Cartographer Code Graph visualizer read from these
-    tables (falling back to them automatically when a project's live VM-hosted graph
-    is empty) — not inert on the read side anymore. The Setup view also shows a live
-    status line (node/relation counts, branch, last-push time) via
-    `sybil_cartographer_status`, so it's visible whether this is actually tracking
-    your project without needing to check Portal or run a manual query.
+    `this.foo()` calls (resolved against the enclosing class's own methods), calls to a
+    name imported via a *relative* import (ES `import` or CommonJS destructured
+    `require()`) that resolves to a real file on disk, and a file-level `imports` graph
+    (one node per file, real edges from real import statements). Deliberately doesn't
+    guess: an arbitrary `obj.method()` (no type inference), a bare/absolute import
+    (could be an installed package), an inherited method from a superclass in another
+    file, or a call inside a bare `test()`/`it()` callback (no enclosing named scope)
+    are all silently skipped rather than resolved wrong.
+  - A one-time full-repo scan runs as part of onboarding, so a project's existing
+    history isn't left uncaptured — only files touched by a commit made *after*
+    onboarding would otherwise ever get pushed.
+  - "Last push wins, per file" — a newer push for a file from any workspace/branch
+    supersedes (deletes) any older one for that same file, so stale data never
+    accumulates and there's nothing separate to garbage-collect. Not real git-ancestry-
+    aware branch overlay resolution, just a pragmatic answer given how this actually
+    gets used (one developer, one workspace per project, in practice).
+  - `sybil_trace_relations`/Portal's Cartographer Code Graph visualizer (both `file` and
+    `detailed` layers) read from these tables (falling back to them automatically when
+    a project's live VM-hosted graph is empty) — not inert on the read side anymore.
+    The Setup view also shows a live status line (node/relation counts, branch,
+    last-push time) via `sybil_cartographer_status`, so it's visible whether this is
+    actually tracking your project without needing to check Portal or run a manual
+    query.
 - **Project setup: SonarQube and Cartographer share one `.githooks/post-commit` file**,
   written section-by-section (each feature's own marker comment) so either one's setup
   can run first, or re-run later, without clobbering the other's block or duplicating
@@ -84,11 +96,11 @@ next to the agent doing the work, not a replacement for it.
   later pass once the shell itself is proven out)
 - A customer-docs site scaffold (Starlight) — same "one-time, template-driven, local
   repo change" shape as the SonarQube/Playwright project-setup steps, next in line
-- Cartographer Redesign, remaining stages: real branch-aware retrieval (main-vs-branch
-  precedence — today's read fallback shows everything with no precedence rules),
-  lifecycle/GC for stale staging data, file-level import graph extraction (so the
-  visualizer's file/module layers work for these projects too, not just the detailed
-  layer), and Stage 3 (CI ingestion path for main)
+- Cartographer Redesign, remaining stages: Stage 3 (CI ingestion path for main — needs
+  a real GitHub Actions secret, a deliberate hold rather than scripting it blind), calls
+  from top-level test-framework callbacks (a real design ambiguity, not yet resolved),
+  and module-level derivation for the visualizer's module layer (file/detailed layers
+  both work from branch data now, module doesn't yet)
 
 ## Setting up a new project
 

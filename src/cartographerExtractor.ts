@@ -5,7 +5,7 @@ import Parser from "web-tree-sitter";
 type Node = Parser.SyntaxNode;
 
 export interface ExtractedNode {
-  kind: "function" | "method" | "class";
+  kind: "function" | "method" | "class" | "file";
   name: string;
   qualified_name: string;
   language: string;
@@ -19,7 +19,7 @@ export interface ExtractedRelation {
   target_file_path: string;
   target_qualified_name: string;
   target_kind: string;
-  relation_type: "calls";
+  relation_type: "calls" | "imports";
 }
 
 export interface ExtractResult {
@@ -359,6 +359,19 @@ export async function extractFile(filePath: string, source: string, repoRoot?: s
   const nodes: ExtractedNode[] = [];
   const rawRelations: RawRelation[] = [];
 
+  // One synthetic node per file, id'd by qualified_name = its own file_path —
+  // mirrors Cartographer's own server-side convention (services/graph_ops.py's
+  // file-level import graph). Doesn't need repoRoot: unlike the 'imports'
+  // edges below, there's nothing to resolve here.
+  nodes.push({
+    kind: "file",
+    name: path.basename(filePath),
+    qualified_name: filePath,
+    language: spec.languageTag,
+    line_start: 1,
+    line_end: source.split("\n").length,
+  });
+
   let importMap = new Map<string, string>();
   if (repoRoot) {
     const currentFileAbs = path.resolve(repoRoot, filePath);
@@ -485,6 +498,25 @@ export async function extractFile(filePath: string, source: string, repoRoot?: s
     if (kind) {
       relations.push({ ...r, target_kind: kind });
     }
+  }
+
+  // File-level 'imports' edges — ground truth from real import/require
+  // statements, deduped to one edge per target file regardless of how many
+  // names are imported from it (matches Cartographer's own file-level graph:
+  // real edges, no bare-name guessing). Target's own file-kind node must
+  // already exist server-side (from whenever THAT file was itself pushed) —
+  // same tolerance as any other cross-file relation, silently unresolved
+  // otherwise, not an error.
+  const importedFiles = new Set(importMap.values());
+  for (const targetFile of importedFiles) {
+    relations.push({
+      source_qualified_name: filePath,
+      source_kind: "file",
+      target_file_path: targetFile,
+      target_qualified_name: targetFile,
+      target_kind: "file",
+      relation_type: "imports",
+    });
   }
 
   return { nodes, relations };
