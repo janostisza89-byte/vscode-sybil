@@ -37,6 +37,11 @@ next to the agent doing the work, not a replacement for it.
   counterpart yet shows a plain "not configured" message inline rather than an error or
   a hidden view — that's the expected state for most projects until onboarding + a real
   scan has happened.
+- **Docs Search** — a query box over CAGI's documentation (`sybil_search`), and a
+  module-name box for a direct lookup (`sybil_get_module`). Pull-based like everything
+  above: type a query, get a result, nothing goes stale on its own since there's no
+  ambient status being displayed. Clicking a result's source card feeds a best-effort
+  guess at that doc's module name into the lookup box.
 - **Project setup: Add Playwright MCP** — one click merges a working `playwright` entry
   (headless chromium via `@playwright/mcp`) into the workspace's `.mcp.json`, no manual
   editing. First of a growing set of one-time, template-driven per-project setup steps
@@ -45,7 +50,6 @@ next to the agent doing the work, not a replacement for it.
 
 ## Roadmap (built incrementally, not all at once)
 
-- Module Browser (`sybil_search` / `sybil_get_module`)
 - DCP Recall (`sybil_recall`)
 - Richer webview UI (current views are plain HTML/JS; a proper bundled UI layer is a
   later pass once the shell itself is proven out)
