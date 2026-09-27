@@ -6,7 +6,7 @@ import { TaskBoardViewProvider } from "./views/taskBoardView";
 import { QualityGateViewProvider } from "./views/qualityGateView";
 import { DocsSearchViewProvider } from "./views/docsSearchView";
 import { DcpRecallViewProvider } from "./views/dcpRecallView";
-import { addPlaywrightMcp, onboardSonarQubeProject } from "./fileSetup";
+import { addPlaywrightMcp, onboardProjectIntegrations } from "./fileSetup";
 import { extractAndPushCurrentFile } from "./cartographerPush";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -102,7 +102,7 @@ export function activate(context: vscode.ExtensionContext): void {
         docsSearchView.refresh();
         dcpRecallView.refresh();
         mcp.ensureSonarqubeIdentity();
-        onboardSonarQubeProject(mcp);
+        onboardProjectIntegrations(mcp, config, context);
         vscode.window.showInformationMessage(`Sybil: now working on project "${projectId}".`);
       }
     }),

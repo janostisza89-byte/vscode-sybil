@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { SybilMcpClient } from "./mcpClient";
-import { extractPythonFile } from "./cartographerExtractor";
+import { extractFile, languageForFile } from "./cartographerExtractor";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,7 +15,7 @@ const WORKSPACE_ID_KEY = "sybil.cartographerWorkspaceId";
  * change (a repo moved, cloned again) without this being a genuinely
  * different workspace for Cartographer's purposes.
  */
-function getWorkspaceId(context: vscode.ExtensionContext): string {
+export function getWorkspaceId(context: vscode.ExtensionContext): string {
   let id = context.workspaceState.get<string>(WORKSPACE_ID_KEY);
   if (!id) {
     id = crypto.randomUUID();
@@ -54,23 +54,23 @@ export async function extractAndPushCurrentFile(context: vscode.ExtensionContext
     vscode.window.showWarningMessage("Sybil: no active editor.");
     return;
   }
-  if (editor.document.languageId !== "python") {
-    vscode.window.showWarningMessage("Sybil: this one-shot command only supports Python for now.");
-    return;
-  }
-
   const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
   if (!folder) {
     vscode.window.showWarningMessage("Sybil: file is not inside an open workspace folder.");
     return;
   }
 
-  const cwd = folder.uri.fsPath;
   const relPath = vscode.workspace.asRelativePath(editor.document.uri, false);
+  if (!languageForFile(relPath)) {
+    vscode.window.showWarningMessage("Sybil: unsupported file type (Python, JS, TS, TSX only for now).");
+    return;
+  }
+
+  const cwd = folder.uri.fsPath;
   const source = editor.document.getText();
   const contentHash = crypto.createHash("sha256").update(source).digest("hex");
 
-  const { nodes, relations } = await extractPythonFile(relPath, source);
+  const { nodes, relations } = await extractFile(relPath, source);
   const { branch, commitSha, dirty } = await getGitInfo(cwd);
   const workspaceId = getWorkspaceId(context);
 

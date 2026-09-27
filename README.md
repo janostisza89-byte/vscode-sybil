@@ -50,16 +50,24 @@ next to the agent doing the work, not a replacement for it.
   editing. First of a growing set of one-time, template-driven per-project setup steps
   (see Roadmap) — carries no secret, so it's always safe to merge, unlike the `sybil-kb`
   entry's token-leak guarding.
-- **Cartographer — Push Current File** (one-shot, Python only) — parses the active
-  editor's file locally with `web-tree-sitter` (functions/classes/same-file bare-name
-  calls only — no attribute or cross-file resolution yet) and pushes it via
-  `sybil_cartographer_ingest_delta` into Cartographer's isolated branch-scoped staging
-  tables, tagged with this workspace's persistent id + the current git branch/commit/
-  dirty-state. For projects whose source lives only on this machine — Cartographer's own
-  indexing (`sybil_task_open`/`sybil_task_close`) needs filesystem access it doesn't have
-  there. Deliberately inert on the read side: nothing queries these tables yet, so pushing
-  a delta today has no effect on anything else. First proof-of-path slice of a larger
-  Cartographer Redesign (see Roadmap) — no file watcher, one language, manual trigger only.
+- **Cartographer — automatic push on every commit** (Python, JS, TS, TSX) — after
+  onboarding, every commit's changed files are parsed locally with `web-tree-sitter`
+  (functions/classes/same-file bare-name calls only — no attribute or cross-file
+  resolution yet) and pushed via `sybil_cartographer_ingest_delta` into Cartographer's
+  isolated branch-scoped staging tables, tagged with this workspace's persistent id +
+  the commit's branch/sha/dirty-state. For projects whose source lives only on this
+  machine — Cartographer's own indexing (`sybil_task_open`/`sybil_task_close`) needs
+  filesystem access it doesn't have there. A post-commit hook (shared with SonarQube's,
+  see below) triggers a standalone headless script installed once per machine into this
+  extension's own storage — the wasm grammars are too large to commit into every
+  consuming repo. Deliberately inert on the read side: nothing queries these tables yet,
+  so pushing a delta today has no effect on anything else. There's also a manual
+  **"Cartographer — Push Current File"** command for a one-off push without waiting for
+  a commit.
+- **Project setup: SonarQube and Cartographer share one `.githooks/post-commit` file**,
+  written section-by-section (each feature's own marker comment) so either one's setup
+  can run first, or re-run later, without clobbering the other's block or duplicating
+  its own.
 
 ## Roadmap (built incrementally, not all at once)
 
@@ -67,10 +75,9 @@ next to the agent doing the work, not a replacement for it.
   later pass once the shell itself is proven out)
 - A customer-docs site scaffold (Starlight) — same "one-time, template-driven, local
   repo change" shape as the SonarQube/Playwright project-setup steps, next in line
-- Cartographer Redesign, remaining stages: a file watcher (today's push is a manual
-  one-shot command only), more languages (TS/TSX next), attribute/cross-file call
-  resolution, and Stage 2 — branch-aware retrieval, lifecycle/GC, main-overlay resolution
-  — actually reading the staging tables the current one-shot push writes into
+- Cartographer Redesign, remaining stages: attribute/cross-file call resolution, and
+  Stage 2 — branch-aware retrieval, lifecycle/GC, main-overlay resolution — actually
+  reading the staging tables the current automatic push writes into
 
 ## Setting up a new project
 
