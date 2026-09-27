@@ -39,6 +39,8 @@ export class DocsSearchViewProvider implements vscode.WebviewViewProvider {
   private mode: Mode = "search";
   private lastQuery = "";
   private lastModuleName = "";
+  private lastResultText: string | undefined;
+  private lastResultTitle = "Sybil docs result";
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -74,9 +76,22 @@ export class DocsSearchViewProvider implements vscode.WebviewViewProvider {
           case "refresh":
             await this.render();
             break;
+          case "openInEditor":
+            await this.openInEditor();
+            break;
         }
       }
     );
+  }
+
+  /** Opens the currently displayed grounding block full-size in an editor tab, next to the sidebar. */
+  private async openInEditor(): Promise<void> {
+    if (!this.lastResultText) return;
+    const doc = await vscode.workspace.openTextDocument({
+      content: `# ${this.lastResultTitle}\n\n${this.lastResultText}`,
+      language: "markdown",
+    });
+    await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
   }
 
   private async render(): Promise<void> {
@@ -116,6 +131,8 @@ export class DocsSearchViewProvider implements vscode.WebviewViewProvider {
             document.querySelectorAll('.source-link').forEach((el) => {
               el.onclick = () => vscode.postMessage({ command: 'lookupModule', name: el.dataset.moduleGuess });
             });
+            const btnOpenEditor = document.getElementById('btnOpenEditor');
+            if (btnOpenEditor) btnOpenEditor.onclick = () => vscode.postMessage({ command: 'openInEditor' });
           </script>
         </body>
       </html>
@@ -135,14 +152,20 @@ export class DocsSearchViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (result.error) {
+      this.lastResultText = undefined;
       return `<p class="error">${escapeHtml(result.error)}</p>`;
     }
     if (!result.grounding_block) {
+      this.lastResultText = undefined;
       return `<p class="empty">No matches for "${escapeHtml(query)}".</p>`;
     }
 
+    this.lastResultText = result.grounding_block;
+    this.lastResultTitle = `Docs Search: ${query}`;
+
     return `
       <div class="meta">confidence: ${escapeHtml(result.confidence_tier ?? "unknown")} (${((result.confidence ?? 0) * 100).toFixed(0)}%)</div>
+      <button id="btnOpenEditor">Open in editor ↗</button>
       <pre class="grounding">${escapeHtml(result.grounding_block)}</pre>
       ${renderSources(result.sources)}
     `;
@@ -161,14 +184,20 @@ export class DocsSearchViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (result.error) {
+      this.lastResultText = undefined;
       return `<p class="error">${escapeHtml(result.error)}</p>`;
     }
     if (!result.grounding_block) {
+      this.lastResultText = undefined;
       return `<p class="empty">No documentation found for module "${escapeHtml(name)}".</p>`;
     }
 
+    this.lastResultText = result.grounding_block;
+    this.lastResultTitle = `Module: ${result.module ?? name}`;
+
     return `
       <div class="detail-title">${escapeHtml(result.module ?? name)}</div>
+      <button id="btnOpenEditor">Open in editor ↗</button>
       <pre class="grounding">${escapeHtml(result.grounding_block)}</pre>
       ${renderSources(result.sources)}
     `;

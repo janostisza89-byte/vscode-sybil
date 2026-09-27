@@ -42,6 +42,9 @@ next to the agent doing the work, not a replacement for it.
   above: type a query, get a result, nothing goes stale on its own since there's no
   ambient status being displayed. Clicking a result's source card feeds a best-effort
   guess at that doc's module name into the lookup box.
+- **DCP Recall** — a query box over DCP's episodic memory (`sybil_recall`, optional
+  keyword filter), showing the primary recall block plus any associative context and
+  conflict warning. Same pull-based shape as Docs Search.
 - **Project setup: Add Playwright MCP** — one click merges a working `playwright` entry
   (headless chromium via `@playwright/mcp`) into the workspace's `.mcp.json`, no manual
   editing. First of a growing set of one-time, template-driven per-project setup steps
@@ -50,7 +53,6 @@ next to the agent doing the work, not a replacement for it.
 
 ## Roadmap (built incrementally, not all at once)
 
-- DCP Recall (`sybil_recall`)
 - Richer webview UI (current views are plain HTML/JS; a proper bundled UI layer is a
   later pass once the shell itself is proven out)
 - A customer-docs site scaffold (Starlight) — same "one-time, template-driven, local
