@@ -144,12 +144,50 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async renderCartographerStatus(projectId: string | undefined): Promise<string> {
+    if (!projectId) return "";
+    try {
+      const raw = (await this.mcp.callTool("sybil_cartographer_status")) as {
+        content?: Array<{ type: string; text?: string }>;
+      };
+      const textBlock = raw.content?.find((c) => c.type === "text")?.text;
+      if (!textBlock) return "";
+      const status = JSON.parse(textBlock) as {
+        error?: string;
+        live_node_count?: number;
+        branch_node_count?: number;
+        branches?: Array<{ branch: string; node_count: number; last_ingested_at: string | null }>;
+      };
+      if (status.error) {
+        return `<p class="cg-error">Cartographer: ${escapeHtml(status.error)}</p>`;
+      }
+
+      const liveCount = status.live_node_count ?? 0;
+      const branchCount = status.branch_node_count ?? 0;
+      if (liveCount === 0 && branchCount === 0) {
+        return `<p class="cg-empty">Cartographer: no nodes tracked yet for this project.</p>`;
+      }
+
+      const parts: string[] = [];
+      if (liveCount > 0) parts.push(`${liveCount} node(s) in the live graph`);
+      if (branchCount > 0) {
+        const latest = (status.branches ?? [])[0];
+        const when = latest?.last_ingested_at ? new Date(latest.last_ingested_at).toLocaleString() : "unknown time";
+        parts.push(`${branchCount} node(s) pushed from this machine (branch "${escapeHtml(latest?.branch ?? "?")}", last ${when})`);
+      }
+      return `<p class="cg-ok">Cartographer: ${parts.join(" · ")}.</p>`;
+    } catch (err) {
+      return `<p class="cg-error">Cartographer: status check failed — ${escapeHtml(err instanceof Error ? err.message : String(err))}</p>`;
+    }
+  }
+
   private async render(webview: vscode.Webview): Promise<void> {
     const token = await this.config.getToken();
     const endpoint = this.config.getEndpoint();
     const ownerId = this.config.getOwnerId();
     const projectId = this.config.getProjectId();
     const portalUrl = this.config.getPortalUrl();
+    const cartographerStatus = await this.renderCartographerStatus(projectId);
 
     const row = (label: string, value: string | undefined) =>
       `<div class="row"><span class="label">${label}</span><span class="${value ? "ok" : "missing"}">${
@@ -165,6 +203,10 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
             .label { color: var(--vscode-descriptionForeground); }
             .ok { color: var(--vscode-terminal-ansiGreen); }
             .missing { color: var(--vscode-terminal-ansiYellow); }
+            .cg-ok, .cg-empty, .cg-error { font-size: 0.85em; margin: 4px 0; }
+            .cg-ok { color: var(--vscode-terminal-ansiGreen); }
+            .cg-empty { color: var(--vscode-descriptionForeground); }
+            .cg-error { color: var(--vscode-errorForeground); }
             input { width: 100%; box-sizing: border-box; margin-bottom: 6px; padding: 4px; }
             button { display: block; width: 100%; margin-top: 6px; padding: 6px; cursor: pointer; }
             .secondary { opacity: 0.85; }
@@ -187,6 +229,7 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
           ${row("Token", token ? "••••••••" : undefined)}
           ${row("Owner ID", ownerId)}
           ${row("Project", projectId)}
+          ${cartographerStatus}
           <button id="btnTest">Test Connection</button>
 
           <p style="margin-top:16px;"><strong>Project setup</strong></p>
@@ -236,4 +279,8 @@ export class SetupViewProvider implements vscode.WebviewViewProvider {
       </html>
     `;
   }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
 }
