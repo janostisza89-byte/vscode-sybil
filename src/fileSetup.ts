@@ -7,7 +7,7 @@ import { promisify } from "util";
 import { McpJsonResponse } from "./portalClient";
 import { SybilMcpClient } from "./mcpClient";
 import { SybilConfig } from "./config";
-import { getWorkspaceId } from "./cartographerPush";
+import { getWorkspaceId, backfillRepo } from "./cartographerPush";
 
 const execFileAsync = promisify(execFile);
 
@@ -514,7 +514,7 @@ const CARTOGRAPHER_HOOK_ASSETS = [
  * checking staleness -- cheap, and keeps it current with whatever extension
  * version is actually installed.
  */
-export async function setupCartographerFiles(config: SybilConfig, context: vscode.ExtensionContext): Promise<CartographerSetupResult> {
+export async function setupCartographerFiles(config: SybilConfig, context: vscode.ExtensionContext, mcp: SybilMcpClient): Promise<CartographerSetupResult> {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
     return { status: "no_workspace" };
@@ -567,6 +567,24 @@ export async function setupCartographerFiles(config: SybilConfig, context: vscod
     console.error("Sybil: git config core.hooksPath failed (non-fatal — not a git repo yet, or git not on PATH):", err);
   }
 
+  // One-time full-repo scan so onboarding doesn't leave everything committed
+  // BEFORE this point permanently uncaptured — see backfillRepo's own
+  // docstring for why this exists (found live, Cats, 2026-09-27: 9+ prior
+  // commits never indexed, since the hook only sees future commits).
+  try {
+    const backfillResult = await backfillRepo(context, mcp, cwd);
+    // A real notification, not console.log — that only lands in the
+    // Extension Host output channel, easy to miss (Janos asked "where is
+    // that log?" after this was console.log-only, 2026-09-27).
+    if (backfillResult.status === "ok") {
+      vscode.window.showInformationMessage(
+        `Sybil: Cartographer backfill pushed ${backfillResult.pushed}/${backfillResult.fileCount} file(s) for this project's existing history.`
+      );
+    }
+  } catch (err) {
+    console.error("Sybil: Cartographer backfill failed (non-fatal):", err);
+  }
+
   return { status: "written", files: written };
 }
 
@@ -582,7 +600,7 @@ export function onboardProjectIntegrations(mcp: SybilMcpClient, config: SybilCon
   void (async () => {
     await runSonarQubeOnboarding(mcp);
     try {
-      const result = await setupCartographerFiles(config, context);
+      const result = await setupCartographerFiles(config, context, mcp);
       console.log(`Sybil: Cartographer local setup ${result.status}`, result.files);
     } catch (err) {
       console.error("Sybil: setupCartographerFiles failed (non-fatal):", err);

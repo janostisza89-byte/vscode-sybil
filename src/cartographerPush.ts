@@ -1,11 +1,21 @@
 import * as vscode from "vscode";
 import * as crypto from "crypto";
+import * as fs from "fs/promises";
+import * as path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { SybilMcpClient } from "./mcpClient";
 import { extractFile, languageForFile } from "./cartographerExtractor";
 
 const execFileAsync = promisify(execFile);
+
+// Mirrors Cartographer's own DEFAULT_EXCLUDE_DIRS (EXP/Cartographer/services/
+// graph_ops.py) plus a few this extractor's own broader language coverage
+// (JS/TS, not just Python) warrants.
+const BACKFILL_EXCLUDE_DIRS = new Set([
+  "node_modules", ".venv", "venv", "__pycache__", ".git", ".pytest_cache",
+  "dist", "build", "coverage", ".scannerwork", ".githooks", "out", ".next", "target", "vendor",
+]);
 
 const WORKSPACE_ID_KEY = "sybil.cartographerWorkspaceId";
 
@@ -24,7 +34,7 @@ export function getWorkspaceId(context: vscode.ExtensionContext): string {
   return id;
 }
 
-async function getGitInfo(cwd: string): Promise<{ branch?: string; commitSha?: string; dirty: boolean }> {
+export async function getGitInfo(cwd: string): Promise<{ branch?: string; commitSha?: string; dirty: boolean }> {
   try {
     const [branchResult, shaResult, statusResult] = await Promise.all([
       execFileAsync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd }),
@@ -91,4 +101,78 @@ export async function extractAndPushCurrentFile(context: vscode.ExtensionContext
   } catch (err) {
     vscode.window.showErrorMessage(`Sybil: Cartographer delta push failed — ${err instanceof Error ? err.message : err}`);
   }
+}
+
+async function collectSupportedFiles(dir: string, repoRoot: string, results: string[] = []): Promise<string[]> {
+  let entries: import("fs").Dirent[];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return results; // unreadable dir (permissions, race) -- skip, not fatal
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (BACKFILL_EXCLUDE_DIRS.has(entry.name)) continue;
+      await collectSupportedFiles(full, repoRoot, results);
+    } else if (entry.isFile()) {
+      const rel = path.relative(repoRoot, full).split(path.sep).join("/");
+      if (languageForFile(rel)) results.push(rel);
+    }
+  }
+  return results;
+}
+
+export interface BackfillResult {
+  status: "ok" | "no_files";
+  fileCount?: number;
+  pushed?: number;
+}
+
+/**
+ * One-time full-repo scan, run as part of Cartographer onboarding — without
+ * it, only files touched in a commit made AFTER onboarding ever get pushed,
+ * so every project onboarded this way starts with permanently incomplete
+ * data for everything already committed (found live, Cats project,
+ * 2026-09-27 — 9+ prior commits were never captured). Mirrors Cartographer's
+ * own server-side ensure_indexed: a full pass the first time, not just
+ * incremental deltas going forward. Chunked (25 files/call) rather than one
+ * giant payload, so a large repo doesn't risk a single oversized request.
+ */
+export async function backfillRepo(context: vscode.ExtensionContext, mcp: SybilMcpClient, repoRoot: string): Promise<BackfillResult> {
+  const files = await collectSupportedFiles(repoRoot, repoRoot);
+  if (files.length === 0) {
+    return { status: "no_files" };
+  }
+
+  const { branch, commitSha, dirty } = await getGitInfo(repoRoot);
+  const workspaceId = getWorkspaceId(context);
+
+  const CHUNK_SIZE = 25;
+  let pushed = 0;
+  for (let i = 0; i < files.length; i += CHUNK_SIZE) {
+    const chunk = files.slice(i, i + CHUNK_SIZE);
+    const chunkFiles: Array<{ file_path: string; content_hash: string; nodes: unknown[]; relations: unknown[] }> = [];
+    for (const relPath of chunk) {
+      try {
+        const source = await fs.readFile(path.join(repoRoot, relPath), "utf-8");
+        const contentHash = crypto.createHash("sha256").update(source).digest("hex");
+        const { nodes, relations } = await extractFile(relPath, source, repoRoot);
+        chunkFiles.push({ file_path: relPath, content_hash: contentHash, nodes, relations });
+      } catch {
+        continue; // unreadable (binary misdetected as text, permission, race) -- skip, not fatal
+      }
+    }
+    if (chunkFiles.length === 0) continue;
+    await mcp.callTool("sybil_cartographer_ingest_delta", {
+      workspace_id: workspaceId,
+      branch: branch ?? "unknown",
+      commit_sha: commitSha,
+      dirty,
+      files: chunkFiles,
+    });
+    pushed += chunkFiles.length;
+  }
+
+  return { status: "ok", fileCount: files.length, pushed };
 }
