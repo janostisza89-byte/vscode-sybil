@@ -70,7 +70,7 @@ export async function extractAndPushCurrentFile(context: vscode.ExtensionContext
   const source = editor.document.getText();
   const contentHash = crypto.createHash("sha256").update(source).digest("hex");
 
-  const { nodes, relations } = await extractFile(relPath, source);
+  const { nodes, relations } = await extractFile(relPath, source, cwd);
   const { branch, commitSha, dirty } = await getGitInfo(cwd);
   const workspaceId = getWorkspaceId(context);
 

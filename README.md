@@ -52,18 +52,27 @@ next to the agent doing the work, not a replacement for it.
   entry's token-leak guarding.
 - **Cartographer — automatic push on every commit** (Python, JS, TS, TSX) — after
   onboarding, every commit's changed files are parsed locally with `web-tree-sitter`
-  (functions/classes/same-file bare-name calls only — no attribute or cross-file
-  resolution yet) and pushed via `sybil_cartographer_ingest_delta` into Cartographer's
-  isolated branch-scoped staging tables, tagged with this workspace's persistent id +
-  the commit's branch/sha/dirty-state. For projects whose source lives only on this
+  and pushed via `sybil_cartographer_ingest_delta` into Cartographer's isolated
+  branch-scoped staging tables, tagged with this workspace's persistent id + the
+  commit's branch/sha/dirty-state. For projects whose source lives only on this
   machine — Cartographer's own indexing (`sybil_task_open`/`sybil_task_close`) needs
   filesystem access it doesn't have there. A post-commit hook (shared with SonarQube's,
   see below) triggers a standalone headless script installed once per machine into this
   extension's own storage — the wasm grammars are too large to commit into every
-  consuming repo. Deliberately inert on the read side: nothing queries these tables yet,
-  so pushing a delta today has no effect on anything else. There's also a manual
-  **"Cartographer — Push Current File"** command for a one-off push without waiting for
-  a commit.
+  consuming repo. There's also a manual **"Cartographer — Push Current File"** command
+  for a one-off push without waiting for a commit.
+  - Extracts function/class declarations, same-file bare-name calls, `self.foo()`/
+    `this.foo()` calls (resolved against the enclosing class's own methods), and calls
+    to a name imported via a *relative* import that resolves to a real file on disk.
+    Deliberately doesn't guess: an arbitrary `obj.method()` (no type inference), a
+    bare/absolute import (could be an installed package), or an inherited method from
+    a superclass in another file are all silently skipped rather than resolved wrong.
+  - `sybil_trace_relations`/Portal's Cartographer Code Graph visualizer read from these
+    tables (falling back to them automatically when a project's live VM-hosted graph
+    is empty) — not inert on the read side anymore. The Setup view also shows a live
+    status line (node/relation counts, branch, last-push time) via
+    `sybil_cartographer_status`, so it's visible whether this is actually tracking
+    your project without needing to check Portal or run a manual query.
 - **Project setup: SonarQube and Cartographer share one `.githooks/post-commit` file**,
   written section-by-section (each feature's own marker comment) so either one's setup
   can run first, or re-run later, without clobbering the other's block or duplicating
@@ -75,9 +84,11 @@ next to the agent doing the work, not a replacement for it.
   later pass once the shell itself is proven out)
 - A customer-docs site scaffold (Starlight) — same "one-time, template-driven, local
   repo change" shape as the SonarQube/Playwright project-setup steps, next in line
-- Cartographer Redesign, remaining stages: attribute/cross-file call resolution, and
-  Stage 2 — branch-aware retrieval, lifecycle/GC, main-overlay resolution — actually
-  reading the staging tables the current automatic push writes into
+- Cartographer Redesign, remaining stages: real branch-aware retrieval (main-vs-branch
+  precedence — today's read fallback shows everything with no precedence rules),
+  lifecycle/GC for stale staging data, file-level import graph extraction (so the
+  visualizer's file/module layers work for these projects too, not just the detailed
+  layer), and Stage 3 (CI ingestion path for main)
 
 ## Setting up a new project
 

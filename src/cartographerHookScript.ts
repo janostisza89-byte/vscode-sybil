@@ -71,7 +71,7 @@ async function buildDeltaFiles(repoRoot: string): Promise<DeltaFile[]> {
       continue; // raced with a later change, or unreadable -- skip, not fatal
     }
     const contentHash = crypto.createHash("sha256").update(source).digest("hex");
-    const { nodes, relations } = await extractFile(filePath, source);
+    const { nodes, relations } = await extractFile(filePath, source, repoRoot);
     files.push({ file_path: filePath, content_hash: contentHash, nodes, relations });
   }
   return files;
